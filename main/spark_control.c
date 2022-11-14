@@ -95,7 +95,8 @@ static void select_preset(uint8_t preset);
 #define EXAMPLE_LED_NUMBERS         1
 #define EXAMPLE_CHASE_SPEED_MS      1000
 
-#define BUTTON_GPIO_NUM     10
+#define BUTTON_GPIO_A_NUM     18
+#define BUTTON_GPIO_B_NUM     19
 #define BUTTON_POLL_PERIOD_MS 50
 
 static const char *TAG = "example";
@@ -118,10 +119,19 @@ static void set_led(uint8_t red, uint8_t green, uint8_t blue){
 }
 
 static void button_poll(btstack_timer_source_t * ts) {
-    bool pressed = gpio_get_level(BUTTON_GPIO_NUM) != 0;
+    // DigiTech FS3X:
+    // - MODE button pulls GPIO_A down
+    // - DOWN button pulls GPIO_B down
+    // - UP   button pulls GPIO_A and GPIO_B down
+
+    uint button = 0;
+    button |= gpio_get_level(BUTTON_GPIO_A_NUM) == 0 ? 1 : 0;
+    button |= gpio_get_level(BUTTON_GPIO_B_NUM) == 0 ? 2 : 0;
+
+    bool pressed = button != 0;
     if (pressed && !button_pressed){
         // button was pressed, select other preset
-        select_preset(1 - (spark_40_preset & 1));
+        select_preset(button - 1);
     }
     button_pressed = pressed;
 
@@ -156,7 +166,7 @@ static void platform_init(void){
     gpio_config_t io_conf = {};
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = 1ULL << BUTTON_GPIO_NUM;
+    io_conf.pin_bit_mask = (1ULL << BUTTON_GPIO_A_NUM) | (1ULL << BUTTON_GPIO_B_NUM);
     io_conf.pull_up_en = 1;
     gpio_config(&io_conf);
 
@@ -427,7 +437,10 @@ static void on_preset_updated(void){
         case 0: // clean
             set_led(0x00, 0xff, 0x00);
             break;
-        case 1: // distortion
+        case 1: // crunchy
+            set_led(0x00, 0xff, 0xff);
+            break;
+        case 2: // distortion
             set_led(0xff, 0x00, 0x00);
             break;
         default:
