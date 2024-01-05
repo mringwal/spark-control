@@ -90,9 +90,9 @@ static void select_preset(uint8_t preset);
 #include "led_strip_encoder.h"
 
 #define RMT_LED_STRIP_RESOLUTION_HZ 10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high resolution)
-#define RMT_LED_STRIP_GPIO_NUM      8
+#define RMT_LED_STRIP_GPIO_NUM      0
 
-#define EXAMPLE_LED_NUMBERS         1
+#define EXAMPLE_LED_NUMBERS         3
 #define EXAMPLE_CHASE_SPEED_MS      1000
 
 #define BUTTON_GPIO_A_NUM     18
@@ -101,21 +101,28 @@ static void select_preset(uint8_t preset);
 
 static const char *TAG = "example";
 
+#ifdef RMT_LED_STRIP_GPIO_NUM
 static uint8_t led_strip_pixels[EXAMPLE_LED_NUMBERS * 3];
 static rmt_channel_handle_t led_chan = NULL;
 static rmt_encoder_handle_t led_encoder = NULL;
 static rmt_transmit_config_t tx_config = {
         .loop_count = 0, // no transfer loop
 };
+#endif
 
 static btstack_timer_source_t button_poller;
 static bool button_pressed;
 
 static void set_led(uint8_t red, uint8_t green, uint8_t blue){
-    led_strip_pixels[0] = green;
-    led_strip_pixels[1] = red;
-    led_strip_pixels[2] = blue;
+#ifdef RMT_LED_STRIP_GPIO_NUM
+    uint8_t i;
+    for (i=0;i<EXAMPLE_LED_NUMBERS;i++){
+        led_strip_pixels[3*i+0] = green;
+        led_strip_pixels[3*i+1] = red;
+        led_strip_pixels[3*i+2] = blue;
+    }
     ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
+#endif
 }
 
 static void button_poll(btstack_timer_source_t * ts) {
@@ -140,6 +147,7 @@ static void button_poll(btstack_timer_source_t * ts) {
 }
 
 static void platform_init(void){
+#ifdef RMT_LED_STRIP_GPIO_NUM
     // setup led strip
     ESP_LOGI(TAG, "Create RMT TX channel");
     rmt_tx_channel_config_t tx_chan_config = {
@@ -161,6 +169,7 @@ static void platform_init(void){
     ESP_ERROR_CHECK(rmt_enable(led_chan));
 
     ESP_LOGI(TAG, "Start LED rainbow chase");
+#endif
 
     // setup GPIOs
     gpio_config_t io_conf = {};
