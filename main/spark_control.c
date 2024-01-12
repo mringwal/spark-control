@@ -50,7 +50,7 @@
 
 // #define LOG_MESSAGES
 
-static const char spark_40_device_name[]          = "Spark 40 BLE";
+static const char spark_40_device_name[]          = " Spark 40 BLE";
 static uint16_t   spark_40_service_uuid           = 0xffc0;
 static uint16_t   spark_40_characteristic_tx_uuid = 0xffc1;
 static uint16_t   spark_40_characteristic_rx_uuid = 0xffc2;
@@ -103,7 +103,7 @@ static void select_preset(uint8_t preset);
 
 #define LED_BRIGHTNESS        50
 
-static const char *TAG = "example";
+static const char *TAG = "spark_control";
 
 #ifdef RMT_LED_STRIP_GPIO_NUM
 static uint8_t led_strip_pixels[EXAMPLE_LED_NUMBERS * 3];
@@ -315,15 +315,14 @@ static void handle_gatt_client_event(uint8_t packet_type, uint16_t channel, uint
                 case GATT_EVENT_QUERY_COMPLETE:
                     att_status = gatt_event_query_complete_get_att_status(packet);
                     if (att_status != ATT_ERROR_SUCCESS){
-                        printf("SERVICE_QUERY_RESULT - Error status %x.\n", att_status);
+                        printf("[!] SERVICE_QUERY_RESULT - Error status %x.\n", att_status);
                         gap_disconnect(spark_40_connection_handle);
-                        start_scanning();
                         break;
                     }
                     app_state = APP_STATE_W4_RX_CHARACTERISTIC;
-                    printf("Search for Spark 40 RX characteristic.\n");
+                    printf("[-] Search for Spark 40 RX characteristic.\n");
                     gatt_client_discover_characteristics_for_service_by_uuid16(handle_gatt_client_event,
-               spark_40_connection_handle, &spark_40_service, spark_40_characteristic_rx_uuid);
+                        spark_40_connection_handle, &spark_40_service, spark_40_characteristic_rx_uuid);
                     break;
                 default:
                     break;
@@ -337,13 +336,12 @@ static void handle_gatt_client_event(uint8_t packet_type, uint16_t channel, uint
                 case GATT_EVENT_QUERY_COMPLETE:
                     att_status = gatt_event_query_complete_get_att_status(packet);
                     if (att_status != ATT_ERROR_SUCCESS){
-                        printf("CHARACTERISTIC_QUERY_RESULT - Error status %x.\n", att_status);
+                        printf("[!] CHARACTERISTIC_QUERY_RESULT - Error status %x.\n", att_status);
                         gap_disconnect(spark_40_connection_handle);
-                        start_scanning();
                         break;
                     }
                     app_state = APP_STATE_W4_TX_CHARACTERISTIC;
-                    printf("Search for Spark 40 TX characteristic.\n");
+                    printf("[-] Search for Spark 40 TX characteristic.\n");
                     gatt_client_discover_characteristics_for_service_by_uuid16(handle_gatt_client_event,
                                spark_40_connection_handle, &spark_40_service, spark_40_characteristic_tx_uuid);
                     break;
@@ -359,12 +357,11 @@ static void handle_gatt_client_event(uint8_t packet_type, uint16_t channel, uint
                 case GATT_EVENT_QUERY_COMPLETE:
                     att_status = gatt_event_query_complete_get_att_status(packet);
                     if (att_status != ATT_ERROR_SUCCESS){
-                        printf("CHARACTERISTIC_QUERY_RESULT - Error status %x.\n", att_status);
+                        printf("[!] CHARACTERISTIC_QUERY_RESULT - Error status %x.\n", att_status);
                         gap_disconnect(spark_40_connection_handle);
-                        start_scanning();
                         break;
                     }
-                    printf("Subscribe for Spark 40 RX characteristic.\n");
+                    printf("[-] Subscribe for Spark 40 RX characteristic.\n");
                     // register handler for notifications
                     gatt_client_listen_for_characteristic_value_updates(&spark_40_notification_listener,
                         handle_gatt_client_event, spark_40_connection_handle, &spark_40_characteristic_rx);
@@ -379,7 +376,7 @@ static void handle_gatt_client_event(uint8_t packet_type, uint16_t channel, uint
         case APP_STATE_W4_RX_SUBSCRIBED:
             switch(hci_event_packet_get_type(packet)){
                 case GATT_EVENT_QUERY_COMPLETE:
-                    printf("Notifications enabled, ATT status %02x\n", gatt_event_query_complete_get_att_status(packet));
+                    printf("[-] Notifications enabled, ATT status %02x\n", gatt_event_query_complete_get_att_status(packet));
                     if (gatt_event_query_complete_get_att_status(packet) != ATT_ERROR_SUCCESS) break;
                     app_state = APP_STATE_CONNECTED;
                     select_preset(0);
@@ -458,29 +455,29 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
 
     switch (hci_event_packet_get_type(packet)) {
         case SM_EVENT_JUST_WORKS_REQUEST:
-            printf("Just works requested\n");
+            printf("[-] Just works requested\n");
             sm_just_works_confirm(sm_event_just_works_request_get_handle(packet));
             break;
         case SM_EVENT_NUMERIC_COMPARISON_REQUEST:
-            printf("Confirming numeric comparison: %"PRIu32"\n", sm_event_numeric_comparison_request_get_passkey(packet));
+            printf("[-] Confirming numeric comparison: %"PRIu32"\n", sm_event_numeric_comparison_request_get_passkey(packet));
             sm_numeric_comparison_confirm(sm_event_passkey_display_number_get_handle(packet));
             break;
         case SM_EVENT_PAIRING_STARTED:
-            printf("Pairing started\n");
+            printf("[-] Pairing started\n");
             break;
         case SM_EVENT_PAIRING_COMPLETE:
             switch (sm_event_pairing_complete_get_status(packet)){
                 case ERROR_CODE_SUCCESS:
-                    printf("Pairing complete, success\n");
+                    printf("[-] Pairing complete, success\n");
                     break;
                 case ERROR_CODE_CONNECTION_TIMEOUT:
-                    printf("Pairing failed, timeout\n");
+                    printf("[-]Pairing failed, timeout\n");
                     break;
                 case ERROR_CODE_REMOTE_USER_TERMINATED_CONNECTION:
-                    printf("Pairing failed, disconnected\n");
+                    printf("[-]Pairing failed, disconnected\n");
                     break;
                 case ERROR_CODE_AUTHENTICATION_FAILURE:
-                    printf("Pairing failed, authentication failure with reason = %u\n", sm_event_pairing_complete_get_reason(packet));
+                    printf("[-] Pairing failed, authentication failure with reason = %u\n", sm_event_pairing_complete_get_reason(packet));
                     break;
                 default:
                     break;
@@ -488,24 +485,24 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
             break;
         case SM_EVENT_REENCRYPTION_STARTED:
             sm_event_reencryption_complete_get_address(packet, addr);
-            printf("Bonding information exists for addr type %u, identity addr %s -> start re-encryption\n",
+            printf("[-] Bonding information exists for addr type %u, identity addr %s -> start re-encryption\n",
                    sm_event_reencryption_started_get_addr_type(packet), bd_addr_to_str(addr));
             break;
         case SM_EVENT_REENCRYPTION_COMPLETE:
             switch (sm_event_reencryption_complete_get_status(packet)){
                 case ERROR_CODE_SUCCESS:
-                    printf("Re-encryption complete, success\n");
+                    printf("[-] Re-encryption complete, success\n");
                     break;
                 case ERROR_CODE_CONNECTION_TIMEOUT:
-                    printf("Re-encryption failed, timeout\n");
+                    printf("[-] Re-encryption failed, timeout\n");
                     break;
                 case ERROR_CODE_REMOTE_USER_TERMINATED_CONNECTION:
-                    printf("Re-encryption failed, disconnected\n");
+                    printf("[-] Re-encryption failed, disconnected\n");
                     break;
                 case ERROR_CODE_PIN_OR_KEY_MISSING:
-                    printf("Re-encryption failed, bonding information missing\n\n");
-                    printf("Assuming remote lost bonding information\n");
-                    printf("Deleting local bonding information and start new pairing...\n");
+                    printf("[-] Re-encryption failed, bonding information missing\n\n");
+                    printf("[-] Assuming remote lost bonding information\n");
+                    printf("[-] Deleting local bonding information and start new pairing...\n");
                     sm_event_reencryption_complete_get_address(packet, addr);
                     addr_type = sm_event_reencryption_started_get_addr_type(packet);
                     gap_delete_bonding(addr_type, addr);
