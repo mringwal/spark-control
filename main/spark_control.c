@@ -93,11 +93,15 @@ static void select_preset(uint8_t preset);
 #define RMT_LED_STRIP_GPIO_NUM      0
 
 #define EXAMPLE_LED_NUMBERS         3
-#define EXAMPLE_CHASE_SPEED_MS      1000
 
 #define BUTTON_GPIO_A_NUM     18
 #define BUTTON_GPIO_B_NUM     19
+#define BUTTON_GPIO_C_NUM     21
+
 #define BUTTON_POLL_PERIOD_MS 50
+#define LED_UPDATE_PERIOD_MS  150
+
+#define LED_BRIGHTNESS        50
 
 static const char *TAG = "example";
 
@@ -113,27 +117,53 @@ static rmt_transmit_config_t tx_config = {
 static btstack_timer_source_t button_poller;
 static bool button_pressed;
 
-static void set_led(uint8_t red, uint8_t green, uint8_t blue){
+static btstack_timer_source_t led_updater;
+static uint8_t led_chaser_position;
+
+static void clear_leds(void){
 #ifdef RMT_LED_STRIP_GPIO_NUM
-    uint8_t i;
-    for (i=0;i<EXAMPLE_LED_NUMBERS;i++){
-        led_strip_pixels[3*i+0] = green;
-        led_strip_pixels[3*i+1] = red;
-        led_strip_pixels[3*i+2] = blue;
-    }
+    memset(led_strip_pixels, 0, sizeof(led_strip_pixels));
+#endif
+}
+
+static const uint8_t gpio_pins[] = { 4, 13, 14, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33, 34, 35, 36};
+static const uint8_t gpio_pins_count = sizeof(gpio_pins);
+
+static void set_led(uint8_t pos, uint8_t red, uint8_t green, uint8_t blue){
+#ifdef RMT_LED_STRIP_GPIO_NUM
+    led_strip_pixels[pos*3+0] = green;
+    led_strip_pixels[pos*3+1] = red;
+    led_strip_pixels[pos*3+2] = blue;
+#endif
+}
+
+static void update_leds(void){
+#ifdef RMT_LED_STRIP_GPIO_NUM
     ESP_ERROR_CHECK(rmt_transmit(led_chan, led_encoder, led_strip_pixels, sizeof(led_strip_pixels), &tx_config));
 #endif
 }
 
 static void button_poll(btstack_timer_source_t * ts) {
-    // DigiTech FS3X:
-    // - MODE button pulls GPIO_A down
-    // - DOWN button pulls GPIO_B down
-    // - UP   button pulls GPIO_A and GPIO_B down
 
+#if 0
+    uint8_t i;
+    for (i=0;i<gpio_pins_count;i++){
+        printf(" %02u", gpio_pins[i]);
+    }
+    printf("\n");
+    for (i=0;i<gpio_pins_count;i++){
+        printf("  %u", gpio_get_level(gpio_pins[i]));
+    }
+    printf("\n\n");
+#else
     uint button = 0;
-    button |= gpio_get_level(BUTTON_GPIO_A_NUM) == 0 ? 1 : 0;
-    button |= gpio_get_level(BUTTON_GPIO_B_NUM) == 0 ? 2 : 0;
+    if (gpio_get_level(BUTTON_GPIO_A_NUM) == 0){
+        button = 1;
+    } else if (gpio_get_level(BUTTON_GPIO_B_NUM) == 0){
+        button = 2;
+    } else if (gpio_get_level(BUTTON_GPIO_C_NUM) == 0){
+        button = 3;
+    }
 
     bool pressed = button != 0;
     if (pressed && !button_pressed){
@@ -141,9 +171,42 @@ static void button_poll(btstack_timer_source_t * ts) {
         select_preset(button - 1);
     }
     button_pressed = pressed;
+#endif
 
-    btstack_run_loop_set_timer(&button_poller, BUTTON_POLL_PERIOD_MS);
-    btstack_run_loop_add_timer(&button_poller);
+    btstack_run_loop_set_timer(ts, BUTTON_POLL_PERIOD_MS);
+    btstack_run_loop_add_timer(ts);
+}
+
+static void led_update(btstack_timer_source_t * ts) {
+
+    if (app_state != APP_STATE_CONNECTED) {
+
+        // LED chaser
+        clear_leds();
+        switch (led_chaser_position){
+            case 0:
+            case 6:
+                set_led(0, 0, 0, LED_BRIGHTNESS);
+                break;
+            case 1:
+            case 5:
+                set_led(1, 0, 0, LED_BRIGHTNESS);
+                break;
+            case 2:
+            case 4:
+                set_led(2, 0, 0, LED_BRIGHTNESS);
+                break;
+            default:
+                break;
+        }
+        update_leds();
+
+        // next state
+        led_chaser_position = (led_chaser_position + 1) & 7;
+    }
+
+    btstack_run_loop_set_timer(ts, LED_UPDATE_PERIOD_MS);
+    btstack_run_loop_add_timer(ts);
 }
 
 static void platform_init(void){
@@ -172,17 +235,27 @@ static void platform_init(void){
 #endif
 
     // setup GPIOs
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_DISABLE;
+    gpio_config_t io_conf = { 0 };
     io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = (1ULL << BUTTON_GPIO_A_NUM) | (1ULL << BUTTON_GPIO_B_NUM);
-    io_conf.pull_up_en = 1;
+    io_conf.pull_up_en   = 1;
+    io_conf.pull_down_en = 0;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    uint8_t i;
+    for (i=0;i<gpio_pins_count;i++){
+        io_conf.pin_bit_mask |= 1ULL << gpio_pins[i];
+    }
     gpio_config(&io_conf);
-
+    
     // poll button
     btstack_run_loop_set_timer_handler(&button_poller, &button_poll);
     btstack_run_loop_set_timer(&button_poller, BUTTON_POLL_PERIOD_MS);
     btstack_run_loop_add_timer(&button_poller);
+
+    // LED update
+    btstack_run_loop_set_timer_handler(&led_updater, &led_update);
+    btstack_run_loop_set_timer(&led_updater, LED_UPDATE_PERIOD_MS);
+    btstack_run_loop_add_timer(&led_updater);
+
 }
 #else
 static void platform_init(void){}
@@ -337,19 +410,23 @@ static void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
         case BTSTACK_EVENT_STATE:
             // BTstack activated, get started
             if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING){
-                set_led(0x00, 0x00, 0xff);
                 start_scanning();
             }
             break;
+        case HCI_EVENT_DISCONNECTION_COMPLETE:
+            printf("[+] Disconnected\n");
+            start_scanning();
+            break;
         case GAP_EVENT_ADVERTISING_REPORT:{
             // check name in advertisement
-            if (!advertisement_report_contains_name(spark_40_device_name, packet)) return;
-            // store address and type
-            gap_event_advertising_report_get_address(packet, spark_40_addr);
-            spark_40_addr_type = gap_event_advertising_report_get_address_type(packet);
-            gap_stop_scan();
-            printf("[-] Found Spark 40 - %s.\n", bd_addr_to_str(spark_40_addr));
-            gap_connect(spark_40_addr,spark_40_addr_type);
+            if (advertisement_report_contains_name(spark_40_device_name, packet)){
+                // store address and type
+                gap_event_advertising_report_get_address(packet, spark_40_addr);
+                spark_40_addr_type = gap_event_advertising_report_get_address_type(packet);
+                gap_stop_scan();
+                printf("[+] Found Spark 40 - %s.\n", bd_addr_to_str(spark_40_addr));
+                gap_connect(spark_40_addr,spark_40_addr_type);
+            }
             break;
         }
         case HCI_EVENT_LE_META:
@@ -442,19 +519,21 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
 
 static void on_preset_updated(void){
     printf("[+] Preset: %u\n", spark_40_preset);
+    clear_leds();
     switch (spark_40_preset){
         case 0: // clean
-            set_led(0x00, 0xff, 0x00);
+            set_led(0, 0x00, LED_BRIGHTNESS, 0x00);
             break;
         case 1: // crunchy
-            set_led(0x00, 0xff, 0xff);
+            set_led(1, 0x00, LED_BRIGHTNESS, LED_BRIGHTNESS);
             break;
         case 2: // distortion
-            set_led(0xff, 0x00, 0x00);
+            set_led(2, LED_BRIGHTNESS, 0x00, 0x00);
             break;
         default:
             break;
     }
+    update_leds();
 }
 
 // message format from
